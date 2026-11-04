@@ -1,0 +1,30 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile + verify
+        run: |
+          set -e
+          python3 -m py_compile scripts/kage.py
+          python3 scripts/kage.py --help > /dev/null
+          python3 scripts/kage.py verify | grep -q 'ALL PASS'
+      - name: Mirror + purple validate (isolated HOME)
+        run: |
+          set -e
+          export HOME="$RUNNER_TEMP/kage-home"; mkdir -p "$HOME/.redteam/campaigns/ci"
+          printf '{"target":"ci","surface":[{"endpoint":"/backup.zip","status":"CONFIRMED","proof":"200","at":"x"}],"logic":[],"code":[],"pocs":[]}' > "$HOME/.redteam/campaigns/ci/undercroft-state.json"
+          python3 scripts/kage.py mirror --target ci | grep -q 'detection rule'
+          python3 scripts/kage.py mirror --target ci | grep -q 'already'
+          python3 scripts/kage.py validate --target ci 2>/dev/null && exit 1 || test $? -eq 1
+          python3 scripts/kage.py telemetry --target ci --add "web access log :: /var/log/w" > /dev/null
+          python3 scripts/kage.py validate --target ci | grep -q 'PURPLE VALIDATE'
+          python3 scripts/kage.py report --target ci --output rep.md
+          grep -q 'Detection rules' rep.md && grep -q 'sigma' rep.md
