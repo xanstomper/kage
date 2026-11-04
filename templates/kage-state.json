@@ -1,0 +1,10 @@
+{
+  "campaign": "<c>",
+  "rules": [
+    {"id": "KAGE-001", "attack_ref": "<ref>", "attack": "<class>", "attck": "T1552",
+     "log_source": "<log>", "match": "<match>", "sigma": {}, "status": "MIRRORED", "at": "<ISO>"}
+  ],
+  "telemetry": [
+    {"source": "<log source>", "path": "<path>", "at": "<ISO>"}
+  ]
+}
