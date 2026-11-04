@@ -15,5 +15,5 @@ python3 $S telemetry --target ci --add 'web access log :: /var/log/w' > /dev/nul
 python3 $S validate --target ci | grep -q 'PURPLE VALIDATE'
 python3 $S report --target ci --output rep.md
 grep -q 'Detection rules' rep.md
-grep -q 'sigma' rep.md
+grep -q 'logsource' rep.md
 echo "KAGE CI SUITE: PASS"
