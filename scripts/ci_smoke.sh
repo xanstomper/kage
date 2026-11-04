@@ -13,7 +13,14 @@ python3 $S mirror --target ci | grep -q '0 detection rule'
 python3 $S validate --target ci 2>/dev/null || test $? -eq 1
 python3 $S telemetry --target ci --add 'web access log :: /var/log/w' > /dev/null
 python3 $S validate --target ci | grep -q 'PURPLE VALIDATE'
+python3 $S export --target ci --dir "$HOME/sigma" | grep -q 'Sigma rule file'
+grep -q 'logsource:' "$HOME"/sigma/*.yml
+grep -q 'falsepositives:' "$HOME"/sigma/*.yml
+grep -q 'attack.t1552' "$HOME"/sigma/*.yml
+python3 $S refire --target ci --rule KAGE-001 2>/dev/null || test $? -eq 2   # no re-fireable URL → refusal
+python3 $S refire --target ci --rule KAGE-999 2>/dev/null || test $? -eq 2   # no such rule → refusal
 python3 $S report --target ci --output rep.md
 grep -q 'Detection rules' rep.md
 grep -q 'logsource' rep.md
+rm -rf "$HOME/sigma" rep.md
 echo "KAGE CI SUITE: PASS"
