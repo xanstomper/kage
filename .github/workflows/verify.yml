@@ -22,7 +22,7 @@ jobs:
           export HOME="$RUNNER_TEMP/kage-home"; mkdir -p "$HOME/.redteam/campaigns/ci"
           printf '{"target":"ci","surface":[{"endpoint":"/backup.zip","status":"CONFIRMED","proof":"200","at":"x"}],"logic":[],"code":[],"pocs":[]}' > "$HOME/.redteam/campaigns/ci/undercroft-state.json"
           python3 scripts/kage.py mirror --target ci | grep -q 'detection rule'
-          python3 scripts/kage.py mirror --target ci | grep -q 'already'
+          python3 scripts/kage.py mirror --target ci | grep -q '0 detection rule'
           python3 scripts/kage.py validate --target ci 2>/dev/null && exit 1 || test $? -eq 1
           python3 scripts/kage.py telemetry --target ci --add "web access log :: /var/log/w" > /dev/null
           python3 scripts/kage.py validate --target ci | grep -q 'PURPLE VALIDATE'
