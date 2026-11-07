@@ -495,15 +495,69 @@ def cmd_export(args):
         return 0
     outdir = Path(args.dir) if args.dir else Path.home() / ".redteam" / "campaigns" / args.target / "sigma"
     outdir.mkdir(parents=True, exist_ok=True)
+    fmt = (args.format or "sigma").lower()
+    if fmt not in ("sigma", "splunk", "elastic", "qradar"):
+        print(f"✗ format '{fmt}' — one of sigma|splunk|elastic|qradar", file=sys.stderr)
+        return 2
     n = 0
-    for r in st["rules"]:
-        y = rule_yaml(r)
-        f = outdir / f"{r['id'].lower()}-{_stable_id(r['attack_ref'] + r['attack'])[:8]}.yml"
-        f.write_text(y)
-        n += 1
+    if fmt == "sigma":
+        for r in st["rules"]:
+            y = rule_yaml(r)
+            f = outdir / f"{r['id'].lower()}-{_stable_id(r['attack_ref'] + r['attack'])[:8]}.yml"
+            f.write_text(y)
+            n += 1
+            if args.print:
+                print(f"── {f.name} ──\n{y}")
+    else:
+        # SIEM-NATIVE EXPORT (the BAS tier): one JSONL record per rule, ready
+        # for Splunk/Elastic/QRadar ingestion — the purple layer speaks the
+        # defender's import formats, not just Sigma.
+        platform = {"splunk": "stix:indicator", "elastic": "detection_rule",
+                    "qradar": "sim:rule"}[fmt]
+        lines = []
+        for r in st["rules"]:
+            lines.append(json.dumps({
+                "index": "spydermonkey_kage", "sourcetype": platform,
+                "rule_id": r["id"], "title": r.get("attack", ""),
+                "technique": r.get("attck", ""), "log_source": r.get("log_source", ""),
+                "match": r.get("match", ""), "level": r.get("level", "high"),
+                "status": r.get("status", ""), "refire": r.get("refire", ""),
+                "falsepositives": r.get("fps", [])}))
+        f = outdir / f"kage-{fmt}.jsonl"
+        f.write_text("\n".join(lines) + "\n")
+        n = len(lines)
         if args.print:
-            print(f"── {f.name} ──\n{y}")
-    print(f"▸ {n} Sigma rule file(s) written to {outdir}")
+            print(f"── {f.name} ──\n" + "\n".join(lines))
+    print(f"▸ {n} detection record(s) written to {outdir}")
+    return 0
+
+
+def cmd_coverage(args):
+    """THE BAS BOARD — ATT&CK coverage measured from the mirror: techniques
+    covered × rules per technique, plus what the purple loop still owes."""
+    st = base(args.target)
+    rules = st["rules"]
+    if not rules:
+        print("· no rules — kage mirror first")
+        return 0
+    by_tech = {}
+    for r in rules:
+        t = (r.get("attck") or "T-UNKNOWN").upper()
+        by_tech.setdefault(t, []).append(r["id"])
+    rows = sorted(by_tech.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    out = [f"═══ KAGE ATT&CK COVERAGE — {args.target} ═══"]
+    for t, ids in rows:
+        out.append(f"  {t:10s} {len(ids):3d} rule(s)  {', '.join(ids[:6])}")
+    out.append(f"════ {len(by_tech)} technique(s) covered · {len(rules)} rule(s) "
+               "total · coverage is complete when every CONFIRMED attack is "
+               "mirrored and refired")
+    text = "\n".join(out)
+    if args.json:
+        print(json.dumps({"target": args.target, "techniques": len(by_tech),
+                          "rules": len(rules),
+                          "by_technique": {t: ids for t, ids in rows}}))
+    else:
+        print(text)
     return 0
 
 
@@ -535,7 +589,8 @@ def cmd_verify(args):
         bad.append("compile")
     help_out = subprocess.run([sys.executable, str(self), "--help"],
                               capture_output=True, text=True).stdout
-    for want in ("mirror", "telemetry", "validate", "refire", "export", "report", "verify"):
+    for want in ("mirror", "telemetry", "validate", "refire", "export", "report",
+                 "coverage", "verify"):
         if want not in help_out:
             bad.append(f"subcommand {want}")
     if len(DETECT_MAP) < 14:
@@ -576,7 +631,13 @@ def main():
     ex = sub.add_parser("export", help="write every rule as a Sigma .yml file")
     ex.add_argument("--target", required=True)
     ex.add_argument("--dir")
-    ex.add_argument("--print", dest="print", action="store_true", help="also print the YAML")
+    ex.add_argument("--format", choices=("sigma", "splunk", "elastic", "qradar"),
+                    default="sigma",
+                    help="sigma .yml (default) or SIEM-native JSONL (the BAS tier)")
+    ex.add_argument("--print", dest="print", action="store_true", help="also print the YAML/JSONL")
+    cv = sub.add_parser("coverage", help="THE BAS BOARD: ATT&CK coverage measured from the mirror")
+    cv.add_argument("--target", required=True)
+    cv.add_argument("--json", action="store_true")
     r = sub.add_parser("report", help="the defense deliverable")
     r.add_argument("--target", required=True)
     r.add_argument("--output")
@@ -584,6 +645,7 @@ def main():
     a = ap.parse_args()
     return {"mirror": cmd_mirror, "telemetry": cmd_telemetry, "validate": cmd_validate,
             "refire": cmd_refire, "export": cmd_export, "report": cmd_report,
+            "coverage": cmd_coverage,
             "verify": cmd_verify}[a.cmd](a)
 
 
